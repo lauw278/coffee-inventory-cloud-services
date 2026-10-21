@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Coffee Inventory</title>
+  <style>
+    :root { font-family: system-ui, Arial, sans-serif; color: #24302b; background: #f5f6f2; }
+    body { margin: 0; }
+    header { background: #244b3b; color: white; padding: 24px max(20px, calc((100% - 1000px)/2)); }
+    main { max-width: 1000px; margin: 24px auto; padding: 0 16px; }
+    .panel { background: white; border-radius: 14px; padding: 20px; margin-bottom: 18px; box-shadow: 0 2px 12px #14251b10; }
+    form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: end; }
+    label { display: grid; gap: 6px; font-size: 14px; }
+    input { padding: 10px; border: 1px solid #ccd5ce; border-radius: 8px; width: auto; min-width: 0; }
+    button { padding: 10px 13px; border: 0; border-radius: 8px; cursor: pointer; background: #244b3b; color: white; }
+    button.secondary { background: #65746b; } button.danger { background: #a33434; }
+    .table-wrap { overflow-x: auto; } table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; border-bottom: 1px solid #e6eae6; padding: 12px 8px; }
+    .actions { display: flex; gap: 6px; } #message { min-height: 1.4em; color: #244b3b; }
+    .muted { color: #66736b; font-size: 14px; }
+    @media(max-width: 720px) { form { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media(max-width: 440px) { form { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<header>
+  <h1>☕ Coffee Inventory</h1>
+  <div>Demo aplikasi pencatatan persediaan kopi berbasis Cloud Services</div>
+</header>
+<main>
+  <section class="panel">
+    <h2 id="form-title">Tambah barang</h2>
+    <form id="item-form">
+      <label>Nama barang <input id="name" required maxlength="120" placeholder="Contoh: Arabika Gayo"></label>
+      <label>Kategori <input id="category" maxlength="80" value="Coffee"></label>
+      <label>Stok (kg) <input id="quantity" type="number" min="0" step="1" required value="1"></label>
+      <label>Harga per kg (Rp) <input id="unit_price" type="number" min="0" step="100" required value="100000"></label>
+      <div><button id="save-button" type="submit">Simpan barang</button> <button id="cancel-button" class="secondary" type="button" hidden>Batal</button></div>
+    </form>
+    <p id="message" role="status"></p>
+  </section>
+  <section class="panel">
+    <h2>Daftar persediaan</h2>
+    <p class="muted">Data disimpan dalam PostgreSQL. Coba tambah, edit, dan hapus data.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>ID</th><th>Nama</th><th>Kategori</th><th>Stok (kg)</th><th>Harga/kg</th><th>Aksi</th></tr></thead>
+      <tbody id="items"><tr><td colspan="6">Memuat data...</td></tr></tbody>
+    </table></div>
+  </section>
+  <p class="muted">API health check: <a href="/health" target="_blank" rel="noreferrer">/health</a></p>
+</main>
+<script>
+let editingId = null;
+const form = document.querySelector("#item-form");
+const message = document.querySelector("#message");
+const body = document.querySelector("#items");
+const el = id => document.getElementById(id);
+const money = value => new Intl.NumberFormat("id-ID", {style:"currency", currency:"IDR", maximumFractionDigits:0}).format(Number(value));
+
+async function api(url, options={}) {
+  const response = await fetch(url, {headers: {"Content-Type":"application/json"}, ...options});
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Request gagal (${response.status})`);
+  return data;
+}
+async function refresh() {
+  try {
+    const items = await api("/api/items");
+    body.replaceChildren();
+    if (!items.length) {
+      const tr = document.createElement("tr"), td = document.createElement("td");
+      td.colSpan = 6; td.textContent = "Belum ada barang. Tambahkan melalui formulir di atas."; tr.append(td); body.append(tr); return;
+    }
+    items.forEach(item => {
+      const tr = document.createElement("tr");
+      [item.id, item.name, item.category, item.quantity, money(item.unit_price)].forEach(value => {
+        const td = document.createElement("td"); td.textContent = value; tr.append(td);
+      });
+      const td = document.createElement("td"), actions = document.createElement("div");
+      actions.className = "actions";
+      const edit = document.createElement("button"); edit.textContent = "Edit";
+      edit.addEventListener("click", () => startEdit(item));
+      const del = document.createElement("button"); del.textContent = "Hapus"; del.className = "danger";
+      del.addEventListener("click", async () => {
+        if (!confirm(`Hapus ${item.name}?`)) return;
+        try { await api(`/api/items/${item.id}`, {method:"DELETE"}); message.textContent = "Barang dihapus."; await refresh(); }
+        catch (e) { message.textContent = e.message; }
+      });
+      actions.append(edit, del); td.append(actions); tr.append(td); body.append(tr);
+    });
+  } catch (e) { message.textContent = "Gagal memuat data: " + e.message; }
+}
+function startEdit(item) {
+  editingId = item.id; el("name").value = item.name; el("category").value = item.category;
+  el("quantity").value = item.quantity; el("unit_price").value = item.unit_price;
+  el("form-title").textContent = `Edit barang #${item.id}`;
+  el("save-button").textContent = "Simpan perubahan"; el("cancel-button").hidden = false;
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+function resetForm() {
+  editingId = null; form.reset(); el("category").value = "Coffee";
+  el("quantity").value = 1; el("unit_price").value = 100000;
+  el("form-title").textContent = "Tambah barang"; el("save-button").textContent = "Simpan barang";
+  el("cancel-button").hidden = true;
+}
+el("cancel-button").addEventListener("click", resetForm);
+form.addEventListener("submit", async event => {
+  event.preventDefault(); message.textContent = "";
+  const payload = {name:el("name").value, category:el("category").value,
+    quantity:el("quantity").value, unit_price:el("unit_price").value};
+  try {
+    await api(editingId ? `/api/items/${editingId}` : "/api/items",
+      {method:editingId ? "PUT" : "POST", body:JSON.stringify(payload)});
+    message.textContent = editingId ? "Perubahan disimpan." : "Barang berhasil ditambahkan.";
+    resetForm(); await refresh();
+  } catch (e) { message.textContent = e.message; }
+});
+refresh();
+</script>
+</body>
+</html>
