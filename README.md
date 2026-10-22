@@ -102,3 +102,4 @@ The demo runs locally in Docker Compose. A suitable next step is to deploy the w
 - Week 7: relational database, schema, validation and access-control discussion.
 
 Verify this mapping against your actual LMS slides; the assignment PDF names these topics but does not give the detailed week-by-week lecture content.
+https://www.canva.com/design/DAHYhh_PB2c/bnIFaABKBOL88H4lNTTfag/edit
